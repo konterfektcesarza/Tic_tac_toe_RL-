@@ -27,7 +27,7 @@ def check_status(board_tuple, player, adversary):
     ]
 
     """
-     If the board state is give it reward/win% == 1
+     If the board state is won give it reward/win% == 1
      If lost == 0
      Else win% ==  0.1 (Pesimistic initial values)
      Why pesimistic? 
@@ -43,7 +43,7 @@ def check_status(board_tuple, player, adversary):
             return 1.0 # win
         if all(v == adversary for v in values):
             return 0.0 # lose
-    return 0.1 
+    return 0.1 # neither
 
 table_agent = {board: check_status(board, agent, opponent) for board in valid_boards}
 table_opponent = {board: check_status(board, opponent, agent) for board in valid_boards}
