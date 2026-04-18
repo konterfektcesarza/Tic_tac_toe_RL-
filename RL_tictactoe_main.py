@@ -1,14 +1,15 @@
-# Tic tac to model from scratch (apart from standard + numpy)
+# Tic tac toe model from scratch [only (standard + numpy)]
 
 import numpy as np
 import itertools
 import random as rand 
 from datetime import datetime
 
+# Our agent and opponent for self play 
 agent = 'x'
 opponent = 'o'
 
-# Generate boards, filter illegal boards
+# Generate boards, filter illegals
 all_variations = list(itertools.product(['x', 'o', 'blank'], repeat=9))
 valid_boards = [
     v for v in all_variations
@@ -24,13 +25,25 @@ def check_status(board_tuple, player, adversary):
         ((0,0),(1,0),(2,0)), ((0,1),(1,1),(2,1)), ((0,2),(1,2),(2,2)),
         ((0,0),(1,1),(2,2)), ((0,2),(1,1),(2,0))
     ]
+
+    """
+     If the board state is give it reward/win% == 1
+     If lost == 0
+     Else win% ==  0.1 (Pesimistic initial values)
+     Why pesimistic? 
+     We want the reward value to "flow" as fast as
+     possible from the 100% winning stats in the late rounds 
+     to the earlier states, but gradually slow down towards the 
+     early states, which are naturally more "uncertain" to evaluate
+    """
+    
     for stc in combinations_to_check:
         values = [board[i, j] for i, j in stc] # Get values
         if all(v == player for v in values):
             return 1.0 # win
         if all(v == adversary for v in values):
             return 0.0 # lose
-        return 0.5 # neither
+    return 0.1 
 
 table_agent = {board: check_status(board, agent, opponent) for board in valid_boards}
 table_opponent = {board: check_status(board, opponent, agent) for board in valid_boards}
@@ -51,46 +64,74 @@ table = {agent: table_agent, opponent: table_opponent}
 8) Continue as long as necessary  
 """
 # Training parameters
-episodes = 5000000
-learning_rate = 0.2
-exploration_rate = 0.125
-# Training globals
-round = None
-current_state = None
+episodes = 50000
+learning_rate = 0.1
+exploration_rate = 0.1
 
 def move(player):
+    # Get the possible next moves
     global round, current_state
     blank_indexes = [i for i, x in enumerate(current_state) if x == 'blank']
-    if not blank_indexes:  # Exception (because of round != 1- condition in the training)
-        return
     possible_states = [[player if i == b_i else x for i, x in enumerate(current_state)] 
                        for b_i in blank_indexes]
+    #  Main space search idea: exploitation / exploration tradeoff 
     roll = rand.uniform(0,1)
     if roll >= exploration_rate:
         new_state = max(possible_states, key=lambda p_s: table[player][tuple(p_s)])
     else:
         new_state = rand.choice(possible_states)
-    table[player][tuple(current_state)] += learning_rate*(table[player][tuple(new_state)] - table[player][tuple(current_state)])
     current_state = new_state
-    round += 1
 
 pre_train_time = (datetime.now())
 for ep in range(episodes):
-    current_state = ['blank' for i in range(9)]
-    round = 1
-    while round != 10:
-        move(agent)
-        if table[agent][tuple(current_state)] == 1:
-            break 
-        move(opponent)
-        if table[opponent][tuple(current_state)] == 1:
-            break
-    if ep % 10000 == 0:
+    if ep % 100000 == 0 and ep > 0:
+        learning_rate *= 0.9 # Small learning rate decay 
         print(f'Episode: {ep}/{episodes}')
         print(f'Training time: {datetime.now() - pre_train_time}')
-    if ep == episodes - int(98/100*episodes):  # For the end episodes, tone down the learning and exploration rate
-        learning_rate = 0.1
-        exploration_rate = 0.05
+        print(f'Progress: {ep/episodes}%')
+    # Initialize board
+    current_state = ['blank' for i in range(9)]
+    agent_prev_state = None
+    opponent_prev_state = None
+    
+    while True:
+        move(agent) # Agent move
+        # !Important! : update the last state evaluation AFTER the move of the opponent
+        # Initially it was set update instantly after own move, but this leads
+        # to updating actions independent of the player
+        # since current state is variable is modified by enemy's move
+        if agent_prev_state is not None:
+            table[agent][tuple(agent_prev_state)] += learning_rate * (
+                table[agent][tuple(current_state)] - table[agent][tuple(agent_prev_state)]
+            )
+        # Save for later
+        agent_prev_state = current_state.copy()
+        # 3. Check Win/Loss/Draw
+        if table[agent][tuple(current_state)] == 1:
+            # Punish (without explicit punish, the game stops, and thus 
+            # enemy never actually learns from "giving" a win to the opponent)
+            if opponent_prev_state is not None:
+                table[opponent][tuple(opponent_prev_state)] += learning_rate * (
+                    0.0 - table[opponent][tuple(opponent_prev_state)]
+                )
+            break
+        if 'blank' not in current_state:
+            break
+
+        move(opponent) # Oppo turn
+        if opponent_prev_state is not None:
+            table[opponent][tuple(opponent_prev_state)] += learning_rate * (
+                table[opponent][tuple(current_state)] - table[opponent][tuple(opponent_prev_state)]
+            )  
+        opponent_prev_state = current_state.copy()
+        if table[opponent][tuple(current_state)] == 1:
+            if agent_prev_state is not None:
+                table[agent][tuple(agent_prev_state)] += learning_rate * (
+                    0.0 - table[agent][tuple(agent_prev_state)]
+                )
+            break
+        if 'blank' not in current_state:
+            break
     
 
 def print_board(state):
@@ -139,6 +180,7 @@ print(" 7 | 8 | 9")
 current_state = ['blank'] * 9
 round = 1
 just_played = agent
+exploration_rate = 0
 
 while True:
     # Agent moves
@@ -156,6 +198,8 @@ while True:
     if winner:
         print("You win!" if winner == opponent else "Draw!")
         break
+
+
 
 
 
